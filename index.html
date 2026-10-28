@@ -194,8 +194,8 @@
 <div class="toolbar">
   <div class="wrap">
     <div class="tabs" role="tablist" aria-label="Views">
-      <button role="tab" id="tab-edit" aria-selected="true" aria-controls="view-edit">Fill in</button>
-      <button role="tab" id="tab-compare" aria-selected="false" aria-controls="view-compare">Compare</button>
+      <button role="tab" id="tab-compare" aria-selected="true" aria-controls="view-compare">Compare</button>
+      <button role="tab" id="tab-edit" aria-selected="false" aria-controls="view-edit">Fill in</button>
     </div>
     <div class="actions">
       <button class="btn primary" id="add">Add college</button>
@@ -212,12 +212,12 @@
   <div class="wrap">
     <p class="saved" id="status" role="status" aria-live="polite"></p>
 
-    <section id="view-edit" role="tabpanel" aria-labelledby="tab-edit">
-      <div id="cards"></div>
+    <section id="view-compare" role="tabpanel" aria-labelledby="tab-compare">
+      <div id="compare"></div>
     </section>
 
-    <section id="view-compare" role="tabpanel" aria-labelledby="tab-compare" hidden>
-      <div id="compare"></div>
+    <section id="view-edit" role="tabpanel" aria-labelledby="tab-edit" hidden>
+      <div id="cards"></div>
     </section>
   </div>
 </main>
@@ -491,6 +491,7 @@
   });
 
   renderCards();
+  renderCompare();
 })();
 </script>
 </body>
