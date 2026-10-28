@@ -9,45 +9,51 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --ink: #12233a;
-    --ink-soft: #4a5b70;
-    --paper: #f3f7fa;
-    --card: #ffffff;
-    --line: #cfdae4;
-    --sea: #0d7c8f;
-    --sea-deep: #095a69;
-    --sea-wash: #dff1f4;
-    --sun: #f2a93b;
-    --danger: #b3261e;
+    --ink: #2d1b30;
+    --ink-soft: #6e5470;
+    --paper: #f5f5f6;
+    --field: #fadbe8;
+    --card: #fff3f8;
+    --line: #e5b3cb;
+    --sea: #c2457d;
+    --sea-hover: #a3326a;
+    --sea-wash: #f6c6da;
+    --sun: #4a2350;
+    --danger: #a31d4f;
+    --header-bg: #dccdf2;
     --radius: 10px;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --ink: #e6eef6;
-      --ink-soft: #a3b3c4;
-      --paper: #0e1824;
-      --card: #162435;
-      --line: #2c4157;
-      --sea: #4fc3d6;
-      --sea-deep: #8fdbe8;
-      --sea-wash: #17384a;
-      --sun: #f2b75c;
-      --danger: #ff8a80;
+      --ink: #fbe9f2;
+      --ink-soft: #cfa8bf;
+      --paper: #1a1a1b;
+      --field: #2a1522;
+      --card: #38202f;
+      --line: #5c3a52;
+      --sea: #b8437a;
+      --sea-hover: #9c2f64;
+      --sea-wash: #4b2b3f;
+      --sun: #f3d6ec;
+      --danger: #ff9cc0;
+      --header-bg: #3b2d58;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
-    --ink: #e6eef6;
-    --ink-soft: #a3b3c4;
-    --paper: #0e1824;
-    --card: #162435;
-    --line: #2c4157;
-    --sea: #4fc3d6;
-    --sea-deep: #8fdbe8;
-    --sea-wash: #17384a;
-    --sun: #f2b75c;
-    --danger: #ff8a80;
+    --ink: #fbe9f2;
+    --ink-soft: #cfa8bf;
+    --paper: #1a1a1b;
+    --field: #2a1522;
+    --card: #38202f;
+    --line: #5c3a52;
+    --sea: #b8437a;
+    --sea-hover: #9c2f64;
+    --sea-wash: #4b2b3f;
+    --sun: #f3d6ec;
+    --danger: #ff9cc0;
+    --header-bg: #3b2d58;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -69,19 +75,9 @@
     margin: 0;
   }
   header.top {
-    background: var(--sea-deep);
-    color: #fff;
-    padding: 1.4rem 1.25rem 3.6rem;
-    position: relative;
-    overflow: hidden;
-  }
-  header.top::after {
-    content: "";
-    position: absolute; left: 0; right: 0; bottom: -1px; height: 44px;
-    background:
-      radial-gradient(60px 22px at 30px 44px, var(--paper) 98%, transparent 100%) 0 0 / 120px 44px repeat-x,
-      radial-gradient(60px 22px at 90px 44px, var(--paper) 98%, transparent 100%) 0 0 / 120px 44px repeat-x;
-    opacity: 1;
+    background: var(--header-bg);
+    color: var(--ink);
+    padding: 1.4rem 1.25rem;
   }
   .wrap { max-width: 1100px; margin: 0 auto; }
   header.top h1 { font-size: clamp(1.35rem, 3.2vw, 1.8rem); line-height: 1.15; }
@@ -94,7 +90,7 @@
     padding-top: calc(.6rem + env(safe-area-inset-top, 0px));
   }
   .toolbar .wrap { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; justify-content: space-between; }
-  .tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--card); }
+  .tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
   .tabs button {
     border: 0; background: transparent; color: var(--ink-soft);
     font: inherit; font-weight: 600; padding: .45rem 1.1rem; cursor: pointer;
@@ -108,17 +104,17 @@
   }
   .btn:hover { border-color: var(--sea); }
   .btn.primary { background: var(--sea); border-color: var(--sea); color: #fff; }
-  .btn.primary:hover { background: var(--sea-deep); }
+  .btn.primary:hover { background: var(--sea-hover); }
   .btn.danger { color: var(--danger); }
   .btn.link {
-    border: 0; background: none; padding: .42rem .3rem;
-    color: var(--sea-deep); text-decoration: underline; text-underline-offset: 3px;
+    border: 0; background: none; padding: .42rem .3rem; font-weight: 400;
+    color: var(--ink); text-decoration: underline; text-underline-offset: 3px;
   }
-  .btn.link:hover { color: var(--sea); }
+  .btn.link:hover { color: var(--ink-soft); }
   .actions { align-items: center; gap: .4rem .9rem; }
   :focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 
-  main { margin-top: -2.2rem; padding: 0 1.25rem 4rem; position: relative; }
+  main { padding: 0 1.25rem 4rem; }
   .saved { font-size: .9rem; color: var(--ink-soft); margin: 1rem 0 0; min-height: 1.4em; }
 
   .college {
@@ -138,20 +134,20 @@
   .hint { font-weight: 400; color: var(--ink-soft); font-size: .88rem; }
   input[type="text"], input[type="date"], textarea {
     width: 100%; font: inherit; color: var(--ink);
-    background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+    background: var(--field); border: 1px solid var(--line); border-radius: 8px;
     padding: .5rem .65rem;
   }
   textarea { resize: vertical; min-height: 5.2rem; }
   input[type="text"]:focus, input[type="date"]:focus, textarea:focus { border-color: var(--sea); outline: 3px solid var(--sea-wash); }
   .name-field input { font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 700; font-size: 1.35rem; }
 
-  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--paper); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--field); }
   .seg label { margin: 0; font-weight: 600; position: relative; }
   .seg input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
   .seg span { display: block; padding: .42rem .9rem; color: var(--ink-soft); }
   .seg label + label span { border-left: 1px solid var(--line); }
   .seg input:checked + span { background: var(--sea); color: #fff; }
-  .seg input[data-diff="Hard"]:checked + span { background: var(--sun); color: #3a2400; }
+  .seg input[data-diff="Hard"]:checked + span { background: var(--sun); color: var(--paper); }
   .seg input:focus-visible + span { outline: 3px solid var(--sun); outline-offset: -3px; }
 
   .empty { text-align: center; padding: 3rem 1rem; color: var(--ink-soft); }
@@ -164,8 +160,8 @@
   th:first-child { background: var(--sea-wash); }
   td.long { min-width: 190px; white-space: pre-wrap; }
   th:nth-child(2), td:nth-child(2) { width: 5.1rem; min-width: 5.1rem; max-width: 5.1rem; }
-  .pill { display: inline-block; padding: 0 .55rem; border-radius: 999px; font-weight: 600; font-size: .85rem; background: var(--sea-wash); color: var(--sea-deep); }
-  .pill.hard { background: var(--sun); color: #3a2400; }
+  .pill { display: inline-block; padding: 0 .55rem; border-radius: 999px; font-weight: 600; font-size: .85rem; background: var(--sea-wash); color: var(--ink); }
+  .pill.hard { background: var(--sun); color: var(--paper); }
   .muted { color: var(--ink-soft); }
 
   [hidden] { display: none !important; }
@@ -200,10 +196,7 @@
     <div class="actions">
       <button class="btn primary" id="add">Add college</button>
       <button class="btn link" id="csv">Download CSV</button>
-      <button class="btn link" id="backup">Save backup</button>
-      <button class="btn link" id="restore">Open backup</button>
       <button class="btn link" id="print">Print</button>
-      <input type="file" id="file" accept="application/json,.json" hidden>
     </div>
   </div>
 </div>
@@ -267,7 +260,7 @@
       localStorage.setItem(STORE_KEY, JSON.stringify(colleges));
       say("Saved in this browser");
     } catch (e) {
-      say("Couldn’t save automatically. Use Save backup to keep your work.");
+      say("Couldn’t save automatically in this browser.");
     }
   }
 
@@ -451,38 +444,6 @@
       lines.push(FIELDS.map(function (f) { return csvCell(c[f.key]); }).join(","));
     });
     download("college-comparison.csv", "text/csv;charset=utf-8", "\ufeff" + lines.join("\r\n"));
-  });
-
-  document.getElementById("backup").addEventListener("click", function () {
-    download("college-comparison-backup.json", "application/json", JSON.stringify(colleges, null, 2));
-  });
-
-  var fileInput = document.getElementById("file");
-  document.getElementById("restore").addEventListener("click", function () { fileInput.click(); });
-  fileInput.addEventListener("change", function () {
-    var f = fileInput.files && fileInput.files[0];
-    if (!f) return;
-    var r = new FileReader();
-    r.onload = function () {
-      try {
-        var data = JSON.parse(r.result);
-        if (!Array.isArray(data)) throw new Error("bad");
-        if (!window.confirm("Replace your current list with the " + data.length + " college(s) in this backup?")) return;
-        colleges = data.map(function (d) {
-          var o = blank();
-          FIELDS.forEach(function (fl) { if (typeof d[fl.key] === "string") o[fl.key] = d[fl.key]; });
-          return o;
-        });
-        if (!colleges.length) colleges = [blank()];
-        save();
-        renderCards();
-        setView("edit");
-      } catch (e) {
-        window.alert("That file isn’t a college worksheet backup. Choose a .json file saved with Save backup.");
-      }
-      fileInput.value = "";
-    };
-    r.readAsText(f);
   });
 
   document.getElementById("print").addEventListener("click", function () {
