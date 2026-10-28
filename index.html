@@ -6,7 +6,7 @@
 <title>College comparison worksheet</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&display=swap" rel="stylesheet">
 <style>
   :root {
     --ink: #2d1b30;
@@ -62,7 +62,7 @@
     margin: 0;
     background: var(--paper);
     color: var(--ink);
-    font-family: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
     font-size: 17px;
     line-height: 1.5;
     padding-top: env(safe-area-inset-top, 0px);
@@ -164,10 +164,17 @@
   .pill.hard { background: var(--sun); color: var(--paper); }
   .muted { color: var(--ink-soft); }
 
+  .gate { width: min(460px, calc(100% - 2.5rem)); margin: 3rem auto; padding: 1.75rem; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); text-align: center; }
+  .gate h2 { font-size: 1.3rem; margin-bottom: .6rem; }
+  .gate p { margin: 0 0 1.1rem; color: var(--ink-soft); }
+  .gate p:last-child { margin-bottom: 0; }
+  .gate .gate-error { color: var(--danger); margin-top: 1rem; }
+  .gate code { background: var(--field); padding: 0 .3rem; border-radius: 4px; }
+
   [hidden] { display: none !important; }
 
   @media print {
-    header.top::after, .toolbar, .saved, .btn { display: none !important; }
+    .gate, .toolbar, .saved, .btn { display: none !important; }
     header.top { background: none; color: #000; padding: 0 0 1rem; }
     header.top p { color: #333; }
     main { margin-top: 0; }
@@ -187,7 +194,9 @@
   </div>
 </header>
 
-<div class="toolbar">
+<section class="gate" id="gate" aria-live="polite"><p>Loading…</p></section>
+
+<div class="toolbar" id="toolbar" hidden>
   <div class="wrap">
     <div class="tabs" role="tablist" aria-label="Views">
       <button role="tab" id="tab-compare" aria-selected="true" aria-controls="view-compare">Compare</button>
@@ -197,11 +206,12 @@
       <button class="btn primary" id="add">Add college</button>
       <button class="btn link" id="csv">Download CSV</button>
       <button class="btn link" id="print">Print</button>
+      <button class="btn link" id="signout">Sign out</button>
     </div>
   </div>
 </div>
 
-<main>
+<main id="main" hidden>
   <div class="wrap">
     <p class="saved" id="status" role="status" aria-live="polite"></p>
 
@@ -215,245 +225,410 @@
   </div>
 </main>
 
-<script>
-(function () {
-  "use strict";
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {
+  initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager,
+  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-  var STORE_KEY = "college-comparison-v1";
+/* ------------------------------------------------------------------
+   Firebase settings for this project.
+   ------------------------------------------------------------------ */
+const firebaseConfig = {
+  apiKey: "AIzaSyDBTaTCn1aJsRqGlXpCaye3SWpGJ2YrIok",
+  authDomain: "college-comparison.firebaseapp.com",
+  projectId: "college-comparison",
+  storageBucket: "college-comparison.firebasestorage.app",
+  messagingSenderId: "983230247659",
+  appId: "1:983230247659:web:6ab868cc5ce839e0fa44ae"
+};
+/* ------------------------------------------------------------------ */
 
-  var FIELDS = [
-    { key: "name",    label: "College name" },
-    { key: "type",    label: "4-yr / 2-yr" },
-    { key: "local",   label: "LA local" },
-    { key: "ocean",   label: "Near ocean" },
-    { key: "diff",    label: "App difficulty" },
-    { key: "due",     label: "App due" },
-    { key: "major",   label: "Must declare major" },
-    { key: "support", label: "Social / emotional / executive function support" },
-    { key: "cost",    label: "Cost & merit aid available" },
-    { key: "housing", label: "Housing" },
-    { key: "notes",   label: "Campus culture and vibe; notes" }
-  ];
+var FIELDS = [
+  { key: "name",    label: "College name" },
+  { key: "type",    label: "4-yr / 2-yr" },
+  { key: "local",   label: "LA local" },
+  { key: "ocean",   label: "Near ocean" },
+  { key: "diff",    label: "App difficulty" },
+  { key: "due",     label: "App due" },
+  { key: "major",   label: "Must declare major" },
+  { key: "support", label: "Social / emotional / executive function support" },
+  { key: "cost",    label: "Cost & merit aid available" },
+  { key: "housing", label: "Housing" },
+  { key: "notes",   label: "Campus culture and vibe; notes" }
+];
 
-  var colleges = load();
-  var statusTimer = null;
+var $ = function (id) { return document.getElementById(id); };
+var gateEl = $("gate"), toolbarEl = $("toolbar"), mainEl = $("main"), cardsEl = $("cards");
 
-  function blank() {
-    var o = { id: String(Date.now()) + Math.random().toString(36).slice(2, 7) };
-    FIELDS.forEach(function (f) { o[f.key] = ""; });
-    return o;
+var colleges = [];
+var currentView = "compare";
+var focusAfterAdd = null;
+var pending = {};
+var statusTimer = null;
+var auth = null, db = null, unsub = null;
+
+function blankFields() {
+  var o = {};
+  FIELDS.forEach(function (f) { o[f.key] = ""; });
+  return o;
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+
+function say(msg, sticky) {
+  var el = $("status");
+  el.textContent = msg;
+  clearTimeout(statusTimer);
+  if (!sticky) statusTimer = setTimeout(function () { el.textContent = ""; }, 2500);
+}
+
+/* ---------- Gate (loading / sign-in / no access / setup) ---------- */
+
+function showGate(html) {
+  gateEl.innerHTML = html;
+  gateEl.hidden = false;
+  toolbarEl.hidden = true;
+  mainEl.hidden = true;
+}
+function openApp() {
+  gateEl.hidden = true;
+  toolbarEl.hidden = false;
+  mainEl.hidden = false;
+}
+function signedOutHtml(msg) {
+  return '<h2>Sign in to open the worksheet</h2>' +
+    '<p>Use the Google account that has been given access.</p>' +
+    '<button class="btn primary" data-action="signin">Sign in with Google</button>' +
+    (msg ? '<p class="gate-error" role="alert">' + esc(msg) + '</p>' : '');
+}
+function deniedHtml(email) {
+  return '<h2>This account doesn’t have access</h2>' +
+    '<p>You’re signed in as <strong>' + esc(email) + '</strong>. Sign in with the Google account that has been given access.</p>' +
+    '<button class="btn primary" data-action="switch">Use a different account</button>';
+}
+function errorHtml(msg) {
+  return '<h2>Something went wrong</h2><p>' + esc(msg) + '</p>' +
+    '<button class="btn primary" data-action="reload">Try again</button>';
+}
+var setupHtml = '<h2>One setup step left</h2>' +
+  '<p>Paste your Firebase settings into <code>firebaseConfig</code> at the top of the script in index.html, then reload this page.</p>';
+
+gateEl.addEventListener("click", function (e) {
+  var b = e.target.closest("[data-action]");
+  if (!b) return;
+  var a = b.getAttribute("data-action");
+  if (a === "signin") signIn();
+  if (a === "switch") signOut(auth);
+  if (a === "reload") location.reload();
+});
+
+async function signIn() {
+  var provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (e) {
+    var code = e && e.code;
+    if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
+    var msg = "Sign-in didn’t finish. Please try again.";
+    if (code === "auth/popup-blocked") msg = "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.";
+    if (code === "auth/unauthorized-domain") msg = "This site’s address hasn’t been added to Firebase’s authorized domains yet.";
+    showGate(signedOutHtml(msg));
+  }
+}
+
+/* ---------- Cards (Fill in tab) ---------- */
+
+function seg(id, key, options, current, isDiff) {
+  return '<div class="seg">' + options.map(function (opt) {
+    var val = typeof opt === "string" ? opt : opt[0];
+    var text = typeof opt === "string" ? opt : opt[1];
+    return '<label><input type="radio" name="' + esc(key + "-" + id) + '" data-key="' + key + '" value="' + esc(val) + '"' +
+      (isDiff ? ' data-diff="' + esc(val) + '"' : "") +
+      (current === val ? " checked" : "") + '><span>' + esc(text) + '</span></label>';
+  }).join("") + "</div>";
+}
+
+function cardHtml(c) {
+  var id = c.id;
+  return '' +
+  '<article class="college" data-id="' + esc(id) + '" aria-label="College">' +
+    '<div class="college-head">' +
+      '<div class="name-field"><label for="name-' + esc(id) + '">College name</label>' +
+      '<input type="text" id="name-' + esc(id) + '" data-key="name" value="' + esc(c.name) + '" placeholder="e.g. Loyola Marymount"></div>' +
+      '<button class="btn danger" data-remove aria-label="Remove this college">Remove</button>' +
+    '</div>' +
+    '<div class="grid">' +
+      '<fieldset><legend>4-year or 2-year</legend>' + seg(id, "type", ["4-yr", "2-yr"], c.type) + '</fieldset>' +
+      '<fieldset><legend>LA local</legend>' + seg(id, "local", [["Y", "Yes"], ["N", "No"]], c.local) + '</fieldset>' +
+      '<fieldset><legend>Near ocean</legend>' + seg(id, "ocean", [["Y", "Yes"], ["N", "No"]], c.ocean) + '</fieldset>' +
+      '<fieldset><legend>Application difficulty</legend>' + seg(id, "diff", [["Easy", "Easy"], ["Med", "Medium"], ["Hard", "Hard"]], c.diff, true) + '</fieldset>' +
+      '<div><label for="due-' + esc(id) + '">Application due</label>' +
+        '<input type="date" id="due-' + esc(id) + '" data-key="due" value="' + esc(c.due) + '"></div>' +
+      '<fieldset><legend>Must declare a major</legend>' + seg(id, "major", [["Y", "Yes"], ["N", "No"]], c.major) + '</fieldset>' +
+      '<div class="span-2"><label for="support-' + esc(id) + '">Social, emotional &amp; executive function support</label>' +
+        '<textarea id="support-' + esc(id) + '" data-key="support" placeholder="Advising, coaching, counseling, learning center…">' + esc(c.support) + '</textarea></div>' +
+      '<div><label for="cost-' + esc(id) + '">Cost &amp; merit aid available</label>' +
+        '<textarea id="cost-' + esc(id) + '" data-key="cost" placeholder="Tuition, scholarships, aid estimate…">' + esc(c.cost) + '</textarea></div>' +
+      '<div><label for="housing-' + esc(id) + '">Housing</label>' +
+        '<textarea id="housing-' + esc(id) + '" data-key="housing" placeholder="Dorm options, guaranteed years, off-campus…">' + esc(c.housing) + '</textarea></div>' +
+      '<div class="span-2"><label for="notes-' + esc(id) + '">Campus culture and vibe; notes</label>' +
+        '<textarea id="notes-' + esc(id) + '" data-key="notes" placeholder="How did it feel? Who did you meet? What stood out?">' + esc(c.notes) + '</textarea></div>' +
+    '</div>' +
+  '</article>';
+}
+
+function hasPending(id, key) {
+  return !!(pending[id] && Object.prototype.hasOwnProperty.call(pending[id].fields, key));
+}
+
+function updateCard(node, c) {
+  node.querySelectorAll("[data-key]").forEach(function (el) {
+    var key = el.getAttribute("data-key");
+    if (hasPending(c.id, key)) return;
+    if (el.type === "radio") { el.checked = (el.value === c[key]); return; }
+    if (el === document.activeElement) return;
+    if (el.value !== c[key]) el.value = c[key];
+  });
+}
+
+/* Keeps the cards in step with the database without rebuilding
+   (and without stealing focus from whatever is being typed). */
+function syncCards() {
+  var oldEmpty = cardsEl.querySelector(".empty");
+  if (oldEmpty) oldEmpty.remove();
+
+  if (!colleges.length) {
+    cardsEl.innerHTML = '<div class="empty">No colleges yet. Choose Add college to start your list.</div>';
+    return;
   }
 
-  function load() {
-    try {
-      var raw = localStorage.getItem(STORE_KEY);
-      if (raw) {
-        var data = JSON.parse(raw);
-        if (Array.isArray(data) && data.length) return data;
+  var ids = {};
+  colleges.forEach(function (c) { ids[c.id] = true; });
+  Array.prototype.slice.call(cardsEl.querySelectorAll(".college")).forEach(function (n) {
+    if (!ids[n.getAttribute("data-id")]) n.remove();
+  });
+
+  colleges.forEach(function (c, i) {
+    var node = null;
+    Array.prototype.forEach.call(cardsEl.querySelectorAll(".college"), function (n) {
+      if (n.getAttribute("data-id") === c.id) node = n;
+    });
+    if (node) {
+      updateCard(node, c);
+    } else {
+      var t = document.createElement("div");
+      t.innerHTML = cardHtml(c);
+      node = t.firstElementChild;
+      cardsEl.insertBefore(node, cardsEl.children[i] || null);
+      if (focusAfterAdd === c.id) {
+        focusAfterAdd = null;
+        var input = node.querySelector('[data-key="name"]');
+        if (input) { input.scrollIntoView({ block: "center" }); input.focus(); }
       }
-    } catch (e) {}
-    return [blank()];
-  }
-
-  function save() {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(colleges));
-      say("Saved in this browser");
-    } catch (e) {
-      say("Couldn’t save automatically in this browser.");
     }
-  }
+  });
+}
 
-  function say(msg) {
-    var el = document.getElementById("status");
-    el.textContent = msg;
-    clearTimeout(statusTimer);
-    statusTimer = setTimeout(function () { el.textContent = ""; }, 2500);
-  }
+/* ---------- Compare tab ---------- */
 
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+function yn(v) { return v === "Y" ? "Yes" : v === "N" ? "No" : '<span class="muted">–</span>'; }
+function txt(v) { return v ? esc(v) : '<span class="muted">–</span>'; }
+function fmtDate(v) {
+  if (!v) return '<span class="muted">–</span>';
+  var p = v.split("-");
+  if (p.length !== 3) return esc(v);
+  var d = new Date(+p[0], +p[1] - 1, +p[2]);
+  return esc(d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }));
+}
+
+function renderCompare() {
+  var el = $("compare");
+  if (!colleges.length) {
+    el.innerHTML = '<div class="empty">No colleges yet. Choose Add college to start your list.</div>';
+    return;
+  }
+  var head = '<tr>' + FIELDS.map(function (f) { return '<th scope="col">' + esc(f.label) + '</th>'; }).join("") + '</tr>';
+  var rows = colleges.map(function (c) {
+    var diff = c.diff ? '<span class="pill' + (c.diff === "Hard" ? " hard" : "") + '">' + esc(c.diff === "Med" ? "Medium" : c.diff) + '</span>' : '<span class="muted">–</span>';
+    return '<tr>' +
+      '<th scope="row" style="font-weight:600;background:var(--card);font-family:inherit;font-size:inherit">' + (c.name ? esc(c.name) : '<span class="muted">Untitled</span>') + '</th>' +
+      '<td>' + (c.type ? esc(c.type) : '<span class="muted">–</span>') + '</td>' +
+      '<td>' + yn(c.local) + '</td>' +
+      '<td>' + yn(c.ocean) + '</td>' +
+      '<td>' + diff + '</td>' +
+      '<td>' + fmtDate(c.due) + '</td>' +
+      '<td>' + yn(c.major) + '</td>' +
+      '<td class="long">' + txt(c.support) + '</td>' +
+      '<td class="long">' + txt(c.cost) + '</td>' +
+      '<td class="long">' + txt(c.housing) + '</td>' +
+      '<td class="long">' + txt(c.notes) + '</td>' +
+    '</tr>';
+  }).join("");
+  el.innerHTML = '<div class="table-scroll"><table><caption class="muted" style="text-align:left;padding:.6rem .75rem;caption-side:bottom">Edit details on the Fill in tab.</caption><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>';
+}
+
+/* ---------- Saving to the shared database ---------- */
+
+function findCollege(id) {
+  for (var i = 0; i < colleges.length; i++) if (colleges[i].id === id) return colleges[i];
+  return null;
+}
+
+function queueWrite(id, key, value, delay) {
+  var c = findCollege(id);
+  if (c) c[key] = value;
+  var p = pending[id] || (pending[id] = { fields: {}, timer: null });
+  p.fields[key] = value;
+  clearTimeout(p.timer);
+  p.timer = setTimeout(function () { flush(id); }, delay);
+  say("Saving…", true);
+}
+
+async function flush(id) {
+  var p = pending[id];
+  if (!p) return;
+  clearTimeout(p.timer);
+  var fields = p.fields;
+  delete pending[id];
+  try {
+    await updateDoc(doc(db, "colleges", id), fields);
+    if (!Object.keys(pending).length) say("Saved for everyone");
+  } catch (e) {
+    say("Couldn’t save that change. Check your connection.");
+  }
+}
+
+function flushAll() { Object.keys(pending).forEach(flush); }
+window.addEventListener("pagehide", flushAll);
+document.addEventListener("visibilitychange", function () { if (document.hidden) flushAll(); });
+
+function handleField(e, delay) {
+  var t = e.target;
+  var key = t.getAttribute("data-key");
+  var card = t.closest(".college");
+  if (!key || !card) return;
+  queueWrite(card.getAttribute("data-id"), key, t.value, delay);
+}
+cardsEl.addEventListener("input", function (e) {
+  if (e.target.type === "radio") return;
+  handleField(e, 500);
+});
+cardsEl.addEventListener("change", function (e) {
+  if (e.target.type === "radio") handleField(e, 0);
+});
+
+cardsEl.addEventListener("click", async function (e) {
+  var btn = e.target.closest("[data-remove]");
+  if (!btn) return;
+  var id = btn.closest(".college").getAttribute("data-id");
+  var c = findCollege(id);
+  var label = c && c.name ? c.name : "this college";
+  if (!window.confirm("Remove " + label + " from the shared list? This removes it for everyone.")) return;
+  clearTimeout(pending[id] && pending[id].timer);
+  delete pending[id];
+  try { await deleteDoc(doc(db, "colleges", id)); }
+  catch (err) { say("Couldn’t remove that college. Check your connection."); }
+});
+
+$("add").addEventListener("click", async function () {
+  setView("edit");
+  var ref = doc(collection(db, "colleges"));
+  focusAfterAdd = ref.id;
+  var data = blankFields();
+  data.created = Date.now();
+  try { await setDoc(ref, data); }
+  catch (e) { say("Couldn’t add a college. Check your connection."); }
+});
+
+/* ---------- Tabs, CSV, print, sign out ---------- */
+
+var tabEdit = $("tab-edit"), tabCompare = $("tab-compare");
+function setView(v) {
+  currentView = v;
+  var edit = v === "edit";
+  tabEdit.setAttribute("aria-selected", edit);
+  tabCompare.setAttribute("aria-selected", !edit);
+  $("view-edit").hidden = !edit;
+  $("view-compare").hidden = edit;
+  if (!edit) renderCompare();
+  window.scrollTo(0, 0);
+}
+tabEdit.addEventListener("click", function () { setView("edit"); });
+tabCompare.addEventListener("click", function () { setView("compare"); });
+
+function csvCell(v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
+$("csv").addEventListener("click", function () {
+  var lines = [FIELDS.map(function (f) { return csvCell(f.label); }).join(",")];
+  colleges.forEach(function (c) {
+    lines.push(FIELDS.map(function (f) { return csvCell(c[f.key]); }).join(","));
+  });
+  var blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "college-comparison.csv";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+});
+
+$("print").addEventListener("click", function () {
+  setView("edit");
+  window.print();
+});
+
+$("signout").addEventListener("click", function () { signOut(auth); });
+
+/* ---------- Start ---------- */
+
+function startListening(user) {
+  $("signout").title = "Signed in as " + user.email;
+  var q = query(collection(db, "colleges"), orderBy("created"));
+  unsub = onSnapshot(q, function (snap) {
+    colleges = snap.docs.map(function (d) {
+      var o = blankFields();
+      var data = d.data();
+      FIELDS.forEach(function (f) { if (typeof data[f.key] === "string") o[f.key] = data[f.key]; });
+      o.id = d.id;
+      return o;
     });
-  }
-
-  function seg(id, key, options, current, extraAttr) {
-    return '<div class="seg">' + options.map(function (opt) {
-      var val = typeof opt === "string" ? opt : opt[0];
-      var text = typeof opt === "string" ? opt : opt[1];
-      return '<label><input type="radio" name="' + esc(key + "-" + id) + '" data-key="' + key + '" value="' + esc(val) + '"' +
-        (extraAttr ? ' data-diff="' + esc(val) + '"' : "") +
-        (current === val ? " checked" : "") + '><span>' + esc(text) + '</span></label>';
-    }).join("") + "</div>";
-  }
-
-  function cardHtml(c, i) {
-    var id = c.id;
-    return '' +
-    '<article class="college" data-id="' + esc(id) + '" aria-label="College ' + (i + 1) + '">' +
-      '<div class="college-head">' +
-        '<div class="name-field"><label for="name-' + esc(id) + '">College name</label>' +
-        '<input type="text" id="name-' + esc(id) + '" data-key="name" value="' + esc(c.name) + '" placeholder="e.g. Loyola Marymount"></div>' +
-        '<button class="btn danger" data-remove aria-label="Remove this college">Remove</button>' +
-      '</div>' +
-      '<div class="grid">' +
-        '<fieldset><legend>4-year or 2-year</legend>' + seg(id, "type", ["4-yr", "2-yr"], c.type) + '</fieldset>' +
-        '<fieldset><legend>LA local</legend>' + seg(id, "local", [["Y", "Yes"], ["N", "No"]], c.local) + '</fieldset>' +
-        '<fieldset><legend>Near ocean</legend>' + seg(id, "ocean", [["Y", "Yes"], ["N", "No"]], c.ocean) + '</fieldset>' +
-        '<fieldset><legend>Application difficulty</legend>' + seg(id, "diff", [["Easy", "Easy"], ["Med", "Medium"], ["Hard", "Hard"]], c.diff, true) + '</fieldset>' +
-        '<div><label for="due-' + esc(id) + '">Application due</label>' +
-          '<input type="date" id="due-' + esc(id) + '" data-key="due" value="' + esc(c.due) + '"></div>' +
-        '<fieldset><legend>Must declare a major</legend>' + seg(id, "major", [["Y", "Yes"], ["N", "No"]], c.major) + '</fieldset>' +
-        '<div class="span-2"><label for="support-' + esc(id) + '">Social, emotional &amp; executive function support</label>' +
-          '<textarea id="support-' + esc(id) + '" data-key="support" placeholder="Advising, coaching, counseling, learning center…">' + esc(c.support) + '</textarea></div>' +
-        '<div><label for="cost-' + esc(id) + '">Cost &amp; merit aid available</label>' +
-          '<textarea id="cost-' + esc(id) + '" data-key="cost" placeholder="Tuition, scholarships, aid estimate…">' + esc(c.cost) + '</textarea></div>' +
-        '<div><label for="housing-' + esc(id) + '">Housing</label>' +
-          '<textarea id="housing-' + esc(id) + '" data-key="housing" placeholder="Dorm options, guaranteed years, off-campus…">' + esc(c.housing) + '</textarea></div>' +
-        '<div class="span-2"><label for="notes-' + esc(id) + '">Campus culture and vibe; notes</label>' +
-          '<textarea id="notes-' + esc(id) + '" data-key="notes" placeholder="How did it feel? Who did you meet? What stood out?">' + esc(c.notes) + '</textarea></div>' +
-      '</div>' +
-    '</article>';
-  }
-
-  function renderCards() {
-    var el = document.getElementById("cards");
-    if (!colleges.length) {
-      el.innerHTML = '<div class="empty">No colleges yet. Choose Add college to start your list.</div>';
-      return;
-    }
-    el.innerHTML = colleges.map(cardHtml).join("");
-  }
-
-  function yn(v) { return v === "Y" ? "Yes" : v === "N" ? "No" : '<span class="muted">–</span>'; }
-
-  function fmtDate(v) {
-    if (!v) return '<span class="muted">–</span>';
-    var p = v.split("-");
-    if (p.length !== 3) return esc(v);
-    var d = new Date(+p[0], +p[1] - 1, +p[2]);
-    return esc(d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }));
-  }
-
-  function txt(v) { return v ? esc(v) : '<span class="muted">–</span>'; }
-
-  function renderCompare() {
-    var el = document.getElementById("compare");
-    if (!colleges.length) {
-      el.innerHTML = '<div class="empty">Add a college on the Fill in tab to compare.</div>';
-      return;
-    }
-    var head = '<tr>' + FIELDS.map(function (f) { return '<th scope="col">' + esc(f.label) + '</th>'; }).join("") + '</tr>';
-    var rows = colleges.map(function (c) {
-      var diff = c.diff ? '<span class="pill' + (c.diff === "Hard" ? " hard" : "") + '">' + esc(c.diff === "Med" ? "Medium" : c.diff) + '</span>' : '<span class="muted">–</span>';
-      return '<tr>' +
-        '<th scope="row" style="font-weight:600;background:var(--card);font-family:inherit;font-size:inherit">' + (c.name ? esc(c.name) : '<span class="muted">Untitled</span>') + '</th>' +
-        '<td>' + (c.type ? esc(c.type) : '<span class="muted">–</span>') + '</td>' +
-        '<td>' + yn(c.local) + '</td>' +
-        '<td>' + yn(c.ocean) + '</td>' +
-        '<td>' + diff + '</td>' +
-        '<td>' + fmtDate(c.due) + '</td>' +
-        '<td>' + yn(c.major) + '</td>' +
-        '<td class="long">' + txt(c.support) + '</td>' +
-        '<td class="long">' + txt(c.cost) + '</td>' +
-        '<td class="long">' + txt(c.housing) + '</td>' +
-        '<td class="long">' + txt(c.notes) + '</td>' +
-      '</tr>';
-    }).join("");
-    el.innerHTML = '<div class="table-scroll"><table><caption class="muted" style="text-align:left;padding:.6rem .75rem;caption-side:bottom">Edit details on the Fill in tab.</caption><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>';
-  }
-
-  /* ---- Events ---- */
-
-  var cardsEl = document.getElementById("cards");
-
-  function onFieldChange(e) {
-    var t = e.target;
-    var key = t.getAttribute("data-key");
-    if (!key) return;
-    var card = t.closest(".college");
-    if (!card) return;
-    var c = colleges.filter(function (x) { return x.id === card.getAttribute("data-id"); })[0];
-    if (!c) return;
-    c[key] = t.value;
-    save();
-  }
-  cardsEl.addEventListener("input", function (e) {
-    if (e.target.type === "radio") return;
-    onFieldChange(e);
+    openApp();
+    syncCards();
+    if (currentView === "compare") renderCompare();
+  }, function (err) {
+    if (err && err.code === "permission-denied") showGate(deniedHtml(user.email));
+    else showGate(errorHtml("The worksheet couldn’t load. Check your connection and try again."));
   });
-  cardsEl.addEventListener("change", function (e) {
-    if (e.target.type === "radio") onFieldChange(e);
-  });
-  cardsEl.addEventListener("click", function (e) {
-    var btn = e.target.closest("[data-remove]");
-    if (!btn) return;
-    var card = btn.closest(".college");
-    var id = card.getAttribute("data-id");
-    var c = colleges.filter(function (x) { return x.id === id; })[0];
-    var label = c && c.name ? c.name : "this college";
-    if (!window.confirm("Remove " + label + " from your list?")) return;
-    colleges = colleges.filter(function (x) { return x.id !== id; });
-    save();
-    renderCards();
-  });
+}
 
-  document.getElementById("add").addEventListener("click", function () {
-    setView("edit");
-    var c = blank();
-    colleges.push(c);
-    save();
-    renderCards();
-    var input = document.getElementById("name-" + c.id);
-    if (input) { input.scrollIntoView({ block: "center" }); input.focus(); }
-  });
+var configured = !Object.keys(firebaseConfig).some(function (k) { return String(firebaseConfig[k]).indexOf("PASTE") !== -1; });
 
-  /* ---- Tabs ---- */
-
-  var tabEdit = document.getElementById("tab-edit");
-  var tabCompare = document.getElementById("tab-compare");
-  function setView(v) {
-    var edit = v === "edit";
-    tabEdit.setAttribute("aria-selected", edit);
-    tabCompare.setAttribute("aria-selected", !edit);
-    document.getElementById("view-edit").hidden = !edit;
-    document.getElementById("view-compare").hidden = edit;
-    if (!edit) renderCompare();
-    window.scrollTo(0, 0);
+if (!configured) {
+  showGate(setupHtml);
+} else {
+  var app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  try {
+    db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+  } catch (e) {
+    db = getFirestore(app);
   }
-  tabEdit.addEventListener("click", function () { setView("edit"); });
-  tabCompare.addEventListener("click", function () { setView("compare"); });
-
-  /* ---- Export / import / print ---- */
-
-  function download(name, mime, content) {
-    var blob = new Blob([content], { type: mime });
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-  }
-
-  function csvCell(v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
-
-  document.getElementById("csv").addEventListener("click", function () {
-    var lines = [FIELDS.map(function (f) { return csvCell(f.label); }).join(",")];
-    colleges.forEach(function (c) {
-      lines.push(FIELDS.map(function (f) { return csvCell(c[f.key]); }).join(","));
-    });
-    download("college-comparison.csv", "text/csv;charset=utf-8", "\ufeff" + lines.join("\r\n"));
+  onAuthStateChanged(auth, function (user) {
+    if (unsub) { unsub(); unsub = null; }
+    colleges = [];
+    cardsEl.innerHTML = "";
+    if (!user) { showGate(signedOutHtml()); return; }
+    showGate("<p>Loading…</p>");
+    startListening(user);
   });
-
-  document.getElementById("print").addEventListener("click", function () {
-    setView("edit");
-    window.print();
-  });
-
-  renderCards();
-  renderCompare();
-})();
+}
 </script>
 </body>
 </html>
